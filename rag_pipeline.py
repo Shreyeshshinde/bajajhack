@@ -37,38 +37,60 @@ def create_rag_chain(chunks, vector_store, llm):
     """Builds the RAG chain using the EnsembleRetriever for Hybrid Search."""
     print("Creating RAG chain with EnsembleRetriever (Hybrid Search)...")
 
-    # 1. Initialize the keyword retriever (BM25)
     bm25_retriever = BM25Retriever.from_documents(chunks)
-    bm25_retriever.k = 5 # Retrieve top 5 keyword-based results
+    bm25_retriever.k = 5
 
-    # 2. Initialize the vector store retriever for semantic search
     chroma_retriever = vector_store.as_retriever(search_kwargs={"k": 5})
 
-    # 3. Initialize the Ensemble Retriever to combine both methods
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, chroma_retriever],
-        weights=[0.5, 0.5] # Give equal weight to both semantic and keyword search
+        weights=[0.5, 0.5]
     )
     
     template = """
-    You are an expert assistant for answering questions about policy documents.
-    Use the following retrieved context to answer the user's question.
-    Synthesize the information from all provided context snippets to form a complete and accurate answer.
-    If the context does not contain the answer, state that you cannot find the information in the provided document.
-    Do not use any external knowledge.
+System Prompt
+You are an expert AI assistant specializing in interpreting insurance policy documents. Your primary goal is to answer user questions accurately and concisely based only on the provided context.
 
-    CONTEXT: 
-    {context}
+Core Instructions:
 
-    QUESTION: 
-    {question}
+Synthesize, Don't Just Extract: Read all provided context snippets. Combine the relevant information into a single, comprehensive, and coherent answer. Do not answer in fragments based on individual snippets.
 
-    ANSWER:
+Simplify and Rephrase: Translate complex policy jargon and legalistic phrasing into clear, simple, and easy-to-understand language. Do not quote the source text directly. Your job is to interpret, not to copy.
+
+Be Direct and Concise: Get straight to the point. Provide a direct answer to the user's question without unnecessary filler words or introductory phrases like "According to the document...".
+
+Keep it Short: Ensure every answer is under 49 words.
+
+Stay Grounded: Base your entire answer on the provided CONTEXT. If the information is not available in the text, you must state: "The answer to this question cannot be found in the provided document." Do not use any external knowledge or make assumptions.
+
+Use a Clean Structure:
+
+For most questions, a direct, single-paragraph answer is best.
+
+If the answer involves a list of specific, distinct conditions or rules (e.g., eligibility criteria), you may use a simple bulleted list.
+
+Example of Perfect Execution:
+CONTEXT:
+[Snippet A: "The policyholder must complete a waiting period of 24 months for specific ailments. This includes procedures like cataract surgery."] [Snippet B: "The waiting period for specified conditions is two years from the policy start date."]
+
+QUESTION:
+What is the waiting period for cataract surgery?
+
+EXCELLENT ANSWER:
+The policy has a waiting period of two years for cataract surgery.
+
+Your Task:
+CONTEXT:
+{context}
+
+QUESTION:
+{question}
+
+ANSWER:
     """
     prompt = ChatPromptTemplate.from_template(template)
     output_parser = StrOutputParser()
 
-    # Define the final RAG chain
     rag_chain = (
         {"context": ensemble_retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
