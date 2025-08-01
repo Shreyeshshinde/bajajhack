@@ -1,39 +1,55 @@
 import os
-from langchain_community.document_loaders import PyPDFLoader 
+from typing import Optional  # Import Optional
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 
-def load_and_split_documents(doc_path):
-    """Loads a PDF using Unstructured and splits it into chunks."""
+
+# Updated function to accept an optional password
+def load_and_split_documents(doc_path: str, password: Optional[str] = None):
+    """
+    Loads a document using the correct loader and handles locked PDFs.
+    """
     print(f"Loading document from path: {doc_path}...")
-    # Use UnstructuredPDFLoader for better parsing of complex PDFs
-    loader = PyPDFLoader(file_path=doc_path)
+
+    _, file_extension = os.path.splitext(doc_path)
+
+    if file_extension.lower() == '.pdf':
+        # Pass the password to PyPDFLoader
+        loader = PyPDFLoader(file_path=doc_path, password=password)
+    elif file_extension.lower() == '.docx':
+        loader = Docx2txtLoader(file_path=doc_path)
+    else:
+        raise ValueError(f"Unsupported file type: {file_extension}")
+
     documents = loader.load()
-            
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = text_splitter.split_documents(documents)
-    
+
     print(f"Split document into {len(chunks)} chunks.")
     return chunks
+
 
 def create_vector_store(chunks):
     """Creates an in-memory Chroma vector store."""
     print("Creating in-memory vector store...")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("GOOGLE_API_KEY"))
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key="AIzaSyCoMwM4Ve73gpcDKiu93GJqugzTMSZlJ2U")
     vector_store = Chroma.from_documents(documents=chunks, embedding=embeddings)
     print("In-memory vector store created successfully.")
     return vector_store
 
+
 def format_docs(docs):
     """Prepares retrieved documents for the prompt."""
     return "\n\n".join(doc.page_content for doc in docs)
+
 
 def create_rag_chain(chunks, vector_store, llm):
     """Builds the RAG chain using the EnsembleRetriever for Hybrid Search."""
@@ -41,46 +57,53 @@ def create_rag_chain(chunks, vector_store, llm):
 
     bm25_retriever = BM25Retriever.from_documents(chunks)
     bm25_retriever.k = 5
-
     chroma_retriever = vector_store.as_retriever(search_kwargs={"k": 5})
 
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, chroma_retriever],
-        weights=[0.5, 0.5]
+        weights=[0.3, 0.7]
     )
-    
+
     template = """
-System Prompt
-You are an expert AI assistant specializing in interpreting insurance policy documents. Your primary goal is to answer user questions accurately and concisely based only on the provided context.
+You are an AI assistant operating within a strict, evidence-based framework for interpreting insurance policy documents, where accuracy and precise contextual understanding are paramount.
 
-Core Instructions:
+*Task*
+Analyze and interpret insurance policy document snippets by:
+- Identifying relevant evidence
+- Synthesizing information without direct quotation
+- Translating complex legal language into clear, concise explanations
+- Providing answers strictly grounded in provided context
 
-Synthesize, Don't Just Extract: Read all provided context snippets. Combine the relevant information into a single, comprehensive, and coherent answer. Do not answer in fragments based on individual snippets.
+*Objective*
+Deliver precise, reliable insurance policy interpretations that are immediately actionable and comprehensible to users, without introducing external assumptions or speculative information.
 
-Simplify and Rephrase: Translate complex policy jargon and legalistic phrasing into clear, simple, and easy-to-understand language. Do not quote the source text directly. Your job is to interpret, not to copy.
+*Knowledge*
+- Always prioritize document-specific context
+- Translate technical insurance terminology into plain language
+- Maintain a strict evidence-first approach
+- Limit responses to 49 words
+- Use bullet points only for list-style answers
+- Prohibit introductory phrases or filler content
 
-Be Direct and Concise: Get straight to the point. Provide a direct answer to the user's question without unnecessary filler words or introductory phrases like "According to the document...".
+*Examples*
+1. *Q:* What is the grace period for premium payment?
+   *A:* A grace period of thirty days is allowed after the due date to renew the policy without losing continuity benefits.
 
-Keep it Short: Ensure every answer is under 49 words.
+2. *Q:* Does this policy cover maternity expenses?
+   *A:* Yes. Maternity expenses—including childbirth and lawful termination—are covered after 24 months of continuous coverage, limited to two events per policy period.
 
-Stay Grounded: Base your entire answer on the provided CONTEXT. If the information is not available in the text, you must state: "The answer to this question cannot be found in the provided document." Do not use any external knowledge or make assumptions.
+3. *Q:* What are preventive health check-up benefits?
+   *A:* Insufficient information.
 
-Use a Clean Structure:
+You will:
+- ALWAYS first identify which snippet(s) contain the answer
+- Respond with "Insufficient information" if no supporting evidence exists
+- Never infer or hallucinate beyond provided context
+- Translate legal language into clear, simple explanations
+- Provide answers in a single, concise paragraph
+- Avoid direct quotations from source documents
 
-For most questions, a direct, single-paragraph answer is best.
-
-If the answer involves a list of specific, distinct conditions or rules (e.g., eligibility criteria), you may use a simple bulleted list.
-
-Example of Perfect Execution:
-CONTEXT:
-[Snippet A: "The policyholder must complete a waiting period of 24 months for specific ailments. This includes procedures like cataract surgery."] [Snippet B: "The waiting period for specified conditions is two years from the policy start date."]
-
-QUESTION:
-What is the waiting period for cataract surgery?
-
-EXCELLENT ANSWER:
-The policy has a waiting period of two years for cataract surgery.
-
+Your primary directive is absolute fidelity to the provided context. Any deviation from the source material is strictly forbidden.
 Your Task:
 CONTEXT:
 {context}
@@ -94,11 +117,11 @@ ANSWER:
     output_parser = StrOutputParser()
 
     rag_chain = (
-        {"context": ensemble_retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | output_parser
+            {"context": ensemble_retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | output_parser
     )
-    
+
     print("Ensemble RAG chain created.")
     return rag_chain
