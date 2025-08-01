@@ -1,18 +1,20 @@
 import os
-from langchain_community.document_loaders import UnstructuredPDFLoader
+from langchain_community.document_loaders import PyPDFLoader 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
+
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 
 def load_and_split_documents(doc_path):
     """Loads a PDF using Unstructured and splits it into chunks."""
     print(f"Loading document from path: {doc_path}...")
     # Use UnstructuredPDFLoader for better parsing of complex PDFs
-    loader = UnstructuredPDFLoader(file_path=doc_path)
+    loader = PyPDFLoader(file_path=doc_path)
     documents = loader.load()
             
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
