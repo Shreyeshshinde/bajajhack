@@ -40,7 +40,7 @@ def load_and_split_documents(doc_path: str, password: Optional[str] = None):
 def create_vector_store(chunks):
     """Creates an in-memory Chroma vector store."""
     print("Creating in-memory vector store...")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key="AIzaSyCoMwM4Ve73gpcDKiu93GJqugzTMSZlJ2U")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key="" + os.getenv("GOOGLE_API_KEY"))
     vector_store = Chroma.from_documents(documents=chunks, embedding=embeddings)
     print("In-memory vector store created successfully.")
     return vector_store
