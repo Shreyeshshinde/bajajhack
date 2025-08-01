@@ -59,11 +59,7 @@ def get_or_create_rag_chain(doc_url: str) -> Runnable:
 
         chunks = load_and_split_documents(temp_file_path)
         vector_store = create_vector_store(chunks)
-<<<<<<< HEAD
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"),
-=======
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"),
->>>>>>> 4e9074d4dd869372562085e4e1e56aaaf316b6f4
                                      temperature=0)
 
         rag_chain = create_rag_chain(chunks, vector_store, llm)
@@ -74,11 +70,7 @@ def get_or_create_rag_chain(doc_url: str) -> Runnable:
             os.remove(temp_file_path)
 
 
-<<<<<<< HEAD
 @app.post("/api/v1/hackrx/run", response_model=ApiResponse)
-=======
-@app.post("/api/v2/hackrx/run", response_model=ApiResponse)
->>>>>>> 4e9074d4dd869372562085e4e1e56aaaf316b6f4
 async def ask_question(request: ApiQueryRequest):
     """Processes questions concurrently using a cached or newly created RAG chain."""
     try:
